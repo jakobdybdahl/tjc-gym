@@ -12,4 +12,4 @@ with Backpropagation](https://arxiv.org/pdf/1605.07736.pdf). The environment is 
 **TO DO**
 
 # Acknowledgement
-This environment was developed to complement @RasmusThorsen and my master thesis at Aarhus University.
+This environment was developed to complement @RasmusThorsen and my master thesis at @ [Aarhus University](https://www.au.dk/).
