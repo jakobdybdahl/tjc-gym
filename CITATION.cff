@@ -1,0 +1,22 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  tjc-gym: Traffic Junction Continuous OpenAI Gym
+  Environment
+message: >-
+  If you would like to cite our work, please use this
+  information.
+type: software
+authors:
+  - given-names: Jakob
+    family-names: Dybdahl
+    email: dybdahl@smukand.dk
+  - given-names: Rasmus
+    family-names: Thorsen
+    email: rallethor@hotmail.com
+repository-code: 'https://github.com/jakobdybdahl/tjc-gym'
+license: MIT
+version: 0.0.1
+date-released: '2021-12-11'
