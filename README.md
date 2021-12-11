@@ -40,7 +40,7 @@ while not all(done):
 
 # Reference
 
-**TO DO**
+If you want to site our work, please see the citation file in the repo for details. Through GitHub it is possible to 'Cite this repository' and get a BibTeX reference - it can be found in the 'About' section of this repo.
 
 # Acknowledgement
 
