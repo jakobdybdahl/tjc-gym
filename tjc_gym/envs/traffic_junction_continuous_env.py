@@ -235,8 +235,13 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         # check each region of field of vision
         for i in np.ndindex((self._fov_w, self._fov_h)):
-            dx = i[1] - ego_x
-            dy = i[0] - ego_y
+            if d[0] != 0:  # going left or right
+                dx = i[0] - ego_x
+                dy = i[1] - ego_y
+            else:  # going up or down
+                dx = i[1] - ego_x
+                dy = i[0] - ego_y
+
             x, y = (
                 a_region_ll[0] + (dx * car_l * x_inc),
                 a_region_ll[1] + (dy * car_l * y_inc),
@@ -289,16 +294,12 @@ class TrafficJunctionContinuousEnv(gym.Env):
                     # polar coordinate
                     r = math.sqrt(relative_pos[0] ** 2 + relative_pos[1] ** 2) / scale
                     theta = math.atan2(relative_pos[1], relative_pos[0])
-                    # print(f"\tRelative position: {relative_pos}. \n\tPolar: ({r}, {theta})")
+                    # print(f"\tPolar: ({r}, {theta})")
 
                     # direction
                     direction = self.__get_direction_one_hot(a)
 
-                    result = np.concatenate(([r], [theta], direction))
-
-                    # print(f"Relative posistion: {relative_pos}. Polar: ({r}, {theta})")
-
-                    fov[i] = result
+                    fov[i] = np.concatenate(([r], [theta], direction))
                     break
 
         return fov
