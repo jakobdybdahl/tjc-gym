@@ -5,7 +5,6 @@ import random
 import gym
 import numpy as np
 from gym import spaces
-from numpy.core.numeric import full
 
 ENV_WIDTH = 1
 GRASS_WIDTH = ENV_WIDTH * 0.425
@@ -106,7 +105,6 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         self._agents = self.n_agents * [None]
         self._n_routes = 1  # only possible to move forward (no turning)
-        self._step_count = 0
 
         self._entry_gates = {
             "top": (GRASS_WIDTH + CAR_WIDTH, ENV_WIDTH),
@@ -151,12 +149,23 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 )
             )
 
+        # env info
+        self._step_count = 0
+        self._acc_unique_collisions = 0
+        self._avg_speed = 0
+        self._total_reward = 0
+
         # render
         self._viewer = None
 
     def reset(self):
+        self._agents = self.n_agents * [None]
+
+        # env info
         self._step_count = 0
-        self._agents = None
+        self._acc_unique_collisions = 0
+        self._avg_speed = 0
+        self._total_reward = 0
 
         self._reset_render()
         self._reset_environment()
@@ -389,6 +398,11 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 agent_to_enter.state.route = np.random.randint(1, self._n_routes + 1)  # [1,n_routes] (inclusive)
                 self.curr_cars_count += 1
 
+        # update env info
+        self._acc_unique_collisions += unique_collisions
+        self._total_reward += sum(rewards)
+        self._avg_speed = self._avg_speed + (np.array(actions) - self._avg_speed).mean() / self._step_count
+
         return (
             self.get_agent_obs(),
             rewards,
@@ -467,6 +481,12 @@ class TrafficJunctionContinuousEnv(gym.Env):
         if self._agent_geoms == None:
             self._initialize_env_geoms()
 
+        # update info box
+        self._reward_label.text = "{:.2f}".format(self._total_reward)
+        self._avg_speed_label.text = "{:.2f}".format(self._avg_speed)
+        self._collisions_label.text = str(self._acc_unique_collisions)
+        self._steps_label.text = str(self._step_count)
+
         for i, agent in enumerate(self._agents):
             if not agent.state.done and agent.state.on_the_road:
                 new_geom_pos = agent.state.position
@@ -524,9 +544,14 @@ class TrafficJunctionContinuousEnv(gym.Env):
         self._agent_geoms = None
         self._agent_labels = None
 
+        # info box
+        self._reward_label = None
+        self._avg_speed_label = None
+        self._collisions_label = None
+        self._steps_label = None
+
         if not self._viewer == None:
             self._viewer.reset()
-            # self._viewer = None
 
     def _initialize_env_geoms(self):
         # cars and labels
@@ -552,6 +577,32 @@ class TrafficJunctionContinuousEnv(gym.Env):
         # road dashes
         num_road_dashes = 10
         dash_length = GRASS_WIDTH / (num_road_dashes * 2 - 1)
+
+        # info box
+        x_left = 0.68 * ENV_WIDTH
+        self._viewer.add_label("Episode stats", x_left, 0.94 * ENV_WIDTH, size=24, anchor_x="left")
+
+        y_base = 0.88 * ENV_WIDTH
+        y_inc = -0.05 * ENV_WIDTH
+        x_left_indent = x_left + ENV_WIDTH * 0.18
+
+        self._viewer.add_label("Steps", x_left, y_base, anchor_x="left")
+        self._steps_label = self._viewer.add_label(str(self._step_count), x_left_indent, y_base, anchor_x="left")
+
+        self._viewer.add_label("Reward", x_left, y_base + y_inc, anchor_x="left")
+        self._reward_label = self._viewer.add_label(
+            str(self._total_reward), x_left_indent, y_base + y_inc, anchor_x="left"
+        )
+
+        self._viewer.add_label("Avg. speed", x_left, y_base + 2 * y_inc, anchor_x="left")
+        self._avg_speed_label = self._viewer.add_label(
+            str(self._avg_speed), x_left_indent, y_base + 2 * y_inc, anchor_x="left"
+        )
+
+        self._viewer.add_label("Collisions", x_left, y_base + 3 * y_inc, anchor_x="left")
+        self._collisions_label = self._viewer.add_label(
+            str(self._acc_unique_collisions), x_left_indent, y_base + 3 * y_inc, anchor_x="left"
+        )
 
         def add_dash(start, end):
             line = self._viewer.add_line(start, end, width=0.0025, is_foreground=False)

@@ -42,6 +42,7 @@ class Viewer(pyglet.window.Window):
             new_pos = (pos[0] * scale[0], pos[1] * scale[1])
             label.position = new_pos
             label.draw()
+            label.position = pos  # reset label position
         glPopMatrix()
 
         self.flip()
@@ -89,13 +90,13 @@ class Viewer(pyglet.window.Window):
 
         return shape
 
-    def add_label(self, text, center_x=0.5, center_y=0.5, size=18):
+    def add_label(self, text, x=0.5, y=0.5, size=18, anchor_x="center"):
         label = pyglet.text.Label(
             text,
             font_name="Times New Roman",
-            x=center_x,
-            y=center_y,
-            anchor_x="center",
+            x=x,
+            y=y,
+            anchor_x=anchor_x,
             anchor_y="center",
             font_size=size,
             color=(255, 255, 255, 255),
