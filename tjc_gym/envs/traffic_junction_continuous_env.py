@@ -100,7 +100,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
         self.step_cost = step_cost
         self.movement_scale_factor = movement_scale_factor
 
-        # initalize field of vision
+        # initalize field of view
         self.set_r_fov(r_fov)
 
         self._agents = self.n_agents * [None]
@@ -233,7 +233,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         # print(f"Lower left: {a_region_ll}")
 
-        # check each region of field of vision
+        # check each region of field of view
         for i in np.ndindex((self._fov_w, self._fov_h)):
             if d[0] != 0:  # going left or right
                 dx = i[0] - ego_x
@@ -308,7 +308,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
         agent_obs = []
 
         for agent in self._agents:
-            # field of vision
+            # field of view
             fov = self._get_fov(agent)
             obs = fov.flatten()
             agent_obs.append(obs)
@@ -360,6 +360,8 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 collision_flag, who = self._update_agent_pos(agent, action)
                 if collision_flag:
                     collisions += 1
+                    unique_collisions += 1
+                    print(f"Collision! Reward: {self.collision_cost}")
                     rewards[agent_i] += self.collision_cost
 
                     # remove agent from episode
