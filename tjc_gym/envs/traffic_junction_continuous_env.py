@@ -373,7 +373,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 else:
                     agent.state.colliding = (False, None)
 
-                rewards[agent_i] += self.step_cost * (1 - actions[agent_i]) * agent.state.step_count
+                rewards[agent_i] += self.step_cost * (1 - actions[agent_i])
 
                 # check if agent has reached it's destination
                 if not agent.state.done and self._reached_destination(agent):
