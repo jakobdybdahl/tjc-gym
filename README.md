@@ -24,7 +24,7 @@ pip install -e .
 ```python
 import gym
 
-env = gym.make('tjc_gym:TrafficJunction6-v0')
+env = gym.make('tjc_gym:TrafficJunctionContinuous6-v0')
 done = [False] * env.n_agents
 score = 0
 
