@@ -85,9 +85,9 @@ class TrafficJunctionContinuousEnv(gym.Env):
         n_max=4,
         max_steps=1000,
         arrive_prob=0.05,
-        r_fov=2,
-        step_cost=-0.01,
-        collision_cost=-20,
+        r_fov=3,
+        step_cost=-1,
+        collision_cost=-100,
         movement_scale_factor=0.01,
     ) -> None:
         super(TrafficJunctionContinuousEnv, self).__init__()
@@ -361,7 +361,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 if collision_flag:
                     collisions += 1
                     unique_collisions += 1
-                    print(f"Collision! Reward: {self.collision_cost}")
+                    #print(f"Collision! Reward: {self.collision_cost}")
                     rewards[agent_i] += self.collision_cost
 
                     # remove agent from episode
@@ -373,7 +373,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 else:
                     agent.state.colliding = (False, None)
 
-                rewards[agent_i] += self.step_cost * (1 - actions[agent_i])
+                rewards[agent_i] += self.step_cost * (1 - actions[agent_i]) * self._step_count
 
                 # check if agent has reached it's destination
                 if not agent.state.done and self._reached_destination(agent):
