@@ -94,10 +94,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
         step_cost=-1,
         collision_cost=-100,
         movement_scale_factor=0.01,
-        seed=None,
     ) -> None:
-        self.seed(seed)
-
         self.n_agents = n_max
         self.curr_cars_count = 0
         self.max_steps = max_steps
@@ -145,7 +142,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
         self.action_space = []
         self.observation_space = []
         for i in range(self.n_agents):
-            self.action_space.append(spaces.Box(low=0, high=1, shape=(1,), dtype=float))
+            self.action_space.append(spaces.Box(low=0, high=1, shape=(1,)))
             self.observation_space.append(
                 spaces.Box(
                     low=-math.pi,
