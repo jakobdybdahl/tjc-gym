@@ -414,11 +414,13 @@ class TrafficJunctionContinuousEnv(gym.Env):
         self._total_reward += sum(rewards)
         self._avg_speed = self._avg_speed + (np.array(actions) - self._avg_speed).mean() / self._step_count
 
+        cars_on_road = [a.state.on_the_road for a in self._agents]
+
         return (
             self.get_agent_obs(),
             rewards,
             agent_dones,
-            {"collisions": collisions, "unique_collisions": unique_collisions},
+            {"collisions": collisions, "unique_collisions": unique_collisions, "cars_on_road": cars_on_road},
         )
 
     def _check_collision(self, agent, next_pos):
