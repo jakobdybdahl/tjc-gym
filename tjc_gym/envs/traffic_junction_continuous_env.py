@@ -305,13 +305,12 @@ class TrafficJunctionContinuousEnv(gym.Env):
         return fov
 
     def get_agent_obs(self):
-        agent_obs = []
+        obs_dim = spaces.flatdim(self.observation_space[0])
+        agent_obs = np.empty((self.n_agents, obs_dim), dtype=np.float32)
 
-        for agent in self._agents:
-            # field of view
-            fov = self._get_fov(agent)
-            obs = fov.flatten()
-            agent_obs.append(obs)
+        for i, agent in enumerate(self._agents):
+            # flatten field of view
+            agent_obs[i] = self._get_fov(agent).flatten()
 
         return agent_obs
 
@@ -348,7 +347,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
     def step(self, actions):
         self._step_count += 1  # global env step
-        rewards = [0 for _ in range(self.n_agents)]
+        rewards = np.zeros(self.n_agents, dtype=np.float32)
         collisions = 0  # counts collisions in step
         unique_collisions = 0  # counts number of new collisions in this step
 
@@ -361,7 +360,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 if collision_flag:
                     collisions += 1
                     unique_collisions += 1
-                    #print(f"Collision! Reward: {self.collision_cost}")
+                    # print(f"Collision! Reward: {self.collision_cost}")
                     rewards[agent_i] += self.collision_cost
 
                     # remove agent from episode
@@ -373,7 +372,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 else:
                     agent.state.colliding = (False, None)
 
-                rewards[agent_i] += self.step_cost * (1 - actions[agent_i]) * self._step_count
+                rewards[agent_i] += self.step_cost * (1 - actions[agent_i]) * agent.state.step_count
 
                 # check if agent has reached it's destination
                 if not agent.state.done and self._reached_destination(agent):
