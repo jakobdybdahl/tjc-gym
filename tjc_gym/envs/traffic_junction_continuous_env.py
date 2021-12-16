@@ -1,10 +1,10 @@
 import copy
 import math
-import random
 
 import gym
 import numpy as np
 from gym import spaces
+from gym.utils import seeding
 
 ENV_WIDTH = 1
 GRASS_WIDTH = ENV_WIDTH * 0.425
@@ -89,8 +89,9 @@ class TrafficJunctionContinuousEnv(gym.Env):
         step_cost=-1,
         collision_cost=-100,
         movement_scale_factor=0.01,
+        seed=None,
     ) -> None:
-        super(TrafficJunctionContinuousEnv, self).__init__()
+        self.seed(seed)
 
         self.n_agents = n_max
         self.curr_cars_count = 0
@@ -171,6 +172,11 @@ class TrafficJunctionContinuousEnv(gym.Env):
         self._reset_environment()
 
         return self.get_agent_obs()
+
+    # https://github.com/openai/gym/blob/v0.21.0/gym/envs/classic_control/cartpole.py#L99
+    def seed(self, seed=None):
+        self.np_random, seed = seeding.np_random(seed)
+        return [seed]
 
     def set_r_fov(self, r_fov):
         self._r_fov = r_fov
@@ -386,18 +392,21 @@ class TrafficJunctionContinuousEnv(gym.Env):
         agent_dones = [agent.state.done for agent in self._agents]
 
         # add new cars according to probalility _arrive_prob
-        if random.uniform(0, 1) < self.arrive_prob and not all([agent.state.on_the_road for agent in self._agents]):
+        if self.np_random.uniform(0, 1) < self.arrive_prob and not all(
+            [agent.state.on_the_road for agent in self._agents]
+        ):
             free_gates = self._free_gates()
             agents_off_road = [agent for agent in self._agents if not agent.state.on_the_road]
 
             if len(agents_off_road) > 0 and len(free_gates) > 0:
-                agent_to_enter = random.choice(agents_off_road)
-                pos = random.choice(free_gates)
+                agent_to_enter = self.np_random.choice(agents_off_road)
+                free_gate_indx = self.np_random.choice(len(free_gates))
+                pos = tuple(free_gates[free_gate_indx])
 
                 agent_to_enter.state.position = pos
                 agent_to_enter.state.direction = self._route_vectors[pos]
                 agent_to_enter.state.on_the_road = True
-                agent_to_enter.state.route = np.random.randint(1, self._n_routes + 1)  # [1,n_routes] (inclusive)
+                agent_to_enter.state.route = self.np_random.randint(1, self._n_routes + 1)  # [1,n_routes] (inclusive)
                 self.curr_cars_count += 1
 
         # update env info
@@ -464,7 +473,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
     def _reset_environment(self):
         shuffled_gates = list(self._route_vectors.keys())
-        np.random.shuffle(shuffled_gates)
+        self.np_random.shuffle(shuffled_gates)
 
         self._agents = [Agent(i) for i in range(self.n_agents)]
         for agent in self._agents:
