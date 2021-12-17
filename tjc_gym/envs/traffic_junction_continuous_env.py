@@ -307,7 +307,8 @@ class TrafficJunctionContinuousEnv(gym.Env):
                     # direction
                     direction = self.__get_direction_one_hot(a)
 
-                    fov[i] = np.concatenate(([r], [theta], direction))
+                    # fov[i] = np.concatenate(([r], [theta], direction))
+                    fov[i] = np.concatenate(([a.state.position[0]], [a.state.position[1]], direction))
                     break
 
         return fov
