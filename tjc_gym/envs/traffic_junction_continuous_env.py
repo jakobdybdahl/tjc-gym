@@ -32,7 +32,6 @@ class AgentState(EntityState):
         self.on_the_road = False
         self.done = False
         self.colliding = (False, None)  # (colliding, whom). Wether the agent was colliding in last step and with whom
-        self.timeout = False
 
 
 class Entity(object):
@@ -358,17 +357,19 @@ class TrafficJunctionContinuousEnv(gym.Env):
     def step(self, actions):
         self._step_count += 1  # global env step
         rewards = np.zeros(self.n_agents, dtype=np.float32)
-        collisions = 0  # counts collisions in step
+        took_step = np.zeros(self.n_agents, dtype=np.float32)  # holds who took a step in this env step
+        collisions = np.zeros(self.n_agents, dtype=np.float32)
         unique_collisions = 0  # counts number of new collisions in this step
 
         for agent_i, action in enumerate(actions):
             agent = self._agents[agent_i]
             if not agent.state.done and agent.state.on_the_road:
                 agent.state.step_count += 1
+                took_step[agent_i] = 1
 
                 collision_flag, who = self._update_agent_pos(agent, action)
                 if collision_flag:
-                    collisions += 1
+                    collisions[agent_i] = 1
                     unique_collisions += 1
                     # print(f"Collision! Reward: {self.collision_cost}")
                     rewards[agent_i] += self.collision_cost
@@ -388,10 +389,9 @@ class TrafficJunctionContinuousEnv(gym.Env):
                     agent.done()
                     self.curr_cars_count -= 1
 
-                # set agent as done and set timeout flag if max steps is reached (for this given car by its local step_count)
-                if agent.state.step_count > self.max_steps:
+                # set agent as done if max steps is reached (for this given car by its local step_count)
+                if agent.state.step_count >= self.max_steps:
                     agent.done()
-                    agent.state.timeout = True
                     self.curr_cars_count -= 1
 
         agent_dones = [agent.state.done for agent in self._agents]
@@ -421,8 +421,6 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         cars_on_road = [a.state.on_the_road for a in self._agents]
 
-        all_timedout = all([agent.state.timeout for agent in self._agents])
-
         return (
             self.get_agent_obs(),
             rewards,
@@ -431,7 +429,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 "collisions": collisions,
                 "unique_collisions": unique_collisions,
                 "cars_on_road": cars_on_road,
-                "timedout": all_timedout,
+                "took_step": took_step,
             },
         )
 
