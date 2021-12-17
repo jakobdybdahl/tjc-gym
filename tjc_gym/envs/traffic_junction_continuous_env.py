@@ -95,6 +95,8 @@ class TrafficJunctionContinuousEnv(gym.Env):
         collision_cost=-100,
         movement_scale_factor=0.01,
     ) -> None:
+        self.seed()
+
         self.n_agents = n_max
         self.curr_cars_count = 0
         self.max_steps = max_steps
