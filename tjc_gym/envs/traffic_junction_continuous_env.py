@@ -94,7 +94,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
         step_cost=-0.1,
         collision_cost=-100,
         movement_scale_factor=0.01,
-        observability='fov'
+        observability='global'
     ) -> None:
         self.seed()
 
@@ -352,10 +352,13 @@ class TrafficJunctionContinuousEnv(gym.Env):
             ax = a.state.position[0]
             ay = a.state.position[1]
 
-            self_to_center = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
-            other_to_center = math.sqrt((ax - center_x) ** 2 + (ay - center_y) ** 2)
+            if a.state.position is not agent.state.position:
+                self_to_center = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+                other_to_center = math.sqrt((ax - center_x) ** 2 + (ay - center_y) ** 2)
 
-            manhatten_distance = self_to_center + other_to_center
+                manhatten_distance = self_to_center + other_to_center
+            else:
+                manhatten_distance = 0
 
             obs[i] = np.concatenate(([ax], [ay], [manhatten_distance], direction))
         
