@@ -217,8 +217,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
                         dtype=float,
                     )
                 )
-
-        if self.observability == 'global':
+        elif self.observability == 'global':
             for i in range(self.n_agents):
                 self.observation_space.append(
                     spaces.Box(
