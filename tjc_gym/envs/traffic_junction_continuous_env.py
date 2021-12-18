@@ -90,9 +90,11 @@ class TrafficJunctionContinuousEnv(gym.Env):
         max_steps=1000,
         arrive_prob=0.05,
         r_fov=3,
-        step_cost=-1,
+        step_cost=-0.1,
         collision_cost=-100,
         movement_scale_factor=0.01,
+        observability='global',
+        reward_callback = lambda rewards, _: rewards
     ) -> None:
         self.seed()
 
@@ -103,10 +105,14 @@ class TrafficJunctionContinuousEnv(gym.Env):
         self.collision_cost = collision_cost
         self.step_cost = step_cost
         self.movement_scale_factor = movement_scale_factor
+        self.observability = observability
 
         # initalize field of view
-        self.set_r_fov(r_fov)
+        if observability == 'fov':
+            self.set_r_fov(r_fov)
 
+        self.reward_callback = reward_callback
+        
         self._agents = self.n_agents * [None]
         self._n_routes = 1  # only possible to move forward (no turning)
 
@@ -141,17 +147,10 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         # action and observation space
         self.action_space = []
-        self.observation_space = []
         for i in range(self.n_agents):
             self.action_space.append(spaces.Box(low=0, high=1, shape=(1,)))
-            self.observation_space.append(
-                spaces.Box(
-                    low=-math.pi,
-                    high=math.pi,
-                    shape=(self._fov_w, self._fov_h, len(self._directions) + 2),
-                    dtype=float,
-                )
-            )
+
+        self._init_obs_space()
 
         # env info
         self._step_count = 0
@@ -204,6 +203,31 @@ class TrafficJunctionContinuousEnv(gym.Env):
             return False
 
         return is_point_in_grass(ll[0], ll[1]) and is_point_in_grass(tr[0], tr[1])
+
+    def _init_obs_space(self):
+        self.observation_space = []
+
+        if self.observability == 'fov':
+            for i in range(self.n_agents):
+                self.observation_space.append(
+                    spaces.Box(
+                        low=-math.pi,
+                        high=math.pi,
+                        shape=(self._fov_w, self._fov_h, len(self._directions) + 2),
+                        dtype=float,
+                    )
+                )
+        elif self.observability == 'global':
+            for i in range(self.n_agents):
+                self.observation_space.append(
+                    spaces.Box(
+                        low=-math.pi,
+                        high=math.pi,
+                        shape=(self.n_agents, len(self._directions) + 3),
+                        dtype=float,
+                    )
+                )
+
 
     def _get_fov(self, agent):
         fov = np.full((self._fov_w, self._fov_h, 6), 0.0, dtype=np.float32)
@@ -313,13 +337,46 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         return fov
 
+    def _get_global_positions(self, agent):
+        obs = np.full((self.n_agents, 7), 0.0, dtype=np.float32)
+        x = agent.state.position[0]
+        y = agent.state.position[1]
+
+        center_x = 0.5
+        center_y = 0.5
+
+        for i, a in enumerate(self._agents):
+            if not a.state.on_the_road:
+                continue
+            
+            direction = self.__get_direction_one_hot(a)
+            ax = a.state.position[0]
+            ay = a.state.position[1]
+
+            if a.state.position is not agent.state.position:
+                self_to_center = math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2)
+                other_to_center = math.sqrt((ax - center_x) ** 2 + (ay - center_y) ** 2)
+
+                manhatten_distance = self_to_center + other_to_center
+            else:
+                manhatten_distance = 0
+
+            obs[i] = np.concatenate(([ax], [ay], [manhatten_distance], direction))
+        
+        return obs
+
+    
+
     def get_agent_obs(self):
         obs_dim = spaces.flatdim(self.observation_space[0])
         agent_obs = np.empty((self.n_agents, obs_dim), dtype=np.float32)
 
         for i, agent in enumerate(self._agents):
-            # flatten field of view
-            agent_obs[i] = self._get_fov(agent).flatten()
+            if self.observability == 'fov':
+                # flatten field of view
+                agent_obs[i] = self._get_fov(agent).flatten()
+            elif self.observability == 'global':
+                agent_obs[i] = self._get_global_positions(agent).flatten()
 
         return agent_obs
 
@@ -423,7 +480,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         return (
             self.get_agent_obs(),
-            rewards,
+            self.reward_callback(rewards, self.n_agents),
             agent_dones,
             {
                 "collisions": collisions,
