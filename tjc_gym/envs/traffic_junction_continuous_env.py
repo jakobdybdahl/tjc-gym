@@ -94,7 +94,8 @@ class TrafficJunctionContinuousEnv(gym.Env):
         step_cost=-0.1,
         collision_cost=-100,
         movement_scale_factor=0.01,
-        observability='global'
+        observability='global',
+        reward_callback = lambda rewards, _: rewards
     ) -> None:
         self.seed()
 
@@ -111,6 +112,8 @@ class TrafficJunctionContinuousEnv(gym.Env):
         if observability == 'fov':
             self.set_r_fov(r_fov)
 
+        self.reward_callback = reward_callback
+        
         self._agents = self.n_agents * [None]
         self._n_routes = 1  # only possible to move forward (no turning)
 
@@ -145,7 +148,8 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         # action and observation space
         self.action_space = []
-        self.action_space.append(spaces.Box(low=0, high=1, shape=(1,)))
+        for i in range(self.n_agents):
+            self.action_space.append(spaces.Box(low=0, high=1, shape=(1,)))
 
         self._init_obs_space()
 
@@ -331,7 +335,6 @@ class TrafficJunctionContinuousEnv(gym.Env):
                     direction = self.__get_direction_one_hot(a)
 
                     fov[i] = np.concatenate(([r], [theta], direction))
-                    # fov[i] = np.concatenate(([a.state.position[0]], [a.state.position[1]], direction))
                     break
 
         return fov
@@ -374,7 +377,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
             if self.observability == 'fov':
                 # flatten field of view
                 agent_obs[i] = self._get_fov(agent).flatten()
-            if self.observability == 'global':
+            elif self.observability == 'global':
                 agent_obs[i] = self._get_global_positions(agent).flatten()
 
         return agent_obs
@@ -436,7 +439,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 else:
                     agent.state.colliding = (False, None)
 
-                rewards[agent_i] += self.step_cost * (1 - actions[agent_i]) # * agent.state.step_count
+                rewards[agent_i] += self.step_cost * (1 - actions[agent_i]) * agent.state.step_count
 
                 # check if agent has reached it's destination
                 if not agent.state.done and self._reached_destination(agent):
@@ -480,7 +483,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         return (
             self.get_agent_obs(),
-            [sum(rewards)] * self.n_agents,
+            self.reward_callback(rewards, self.n_agents),
             agent_dones,
             {
                 "collisions": collisions,
