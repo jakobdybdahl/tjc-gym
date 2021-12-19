@@ -5,7 +5,7 @@ from setuptools import setup
 
 setup(
     name="tjc-gym",
-    version="0.0.3",
+    version="0.0.4",
     description="OpenAI Gym environment of Traffic Junction with continuous action space",
     long_description_content_type="text/markdown",
     long_description=open(path.join(path.abspath(path.dirname(__file__)), "README.md"), encoding="utf-8").read(),
