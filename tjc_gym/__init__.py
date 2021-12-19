@@ -1,5 +1,3 @@
-from typing import KeysView
-
 from gym.envs.registration import register
 
 register(
