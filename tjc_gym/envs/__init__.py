@@ -1,2 +1,0 @@
-from tjc_gym.envs.rendering import Viewer
-from tjc_gym.envs.traffic_junction_continuous_env import TrafficJunctionContinuousEnv

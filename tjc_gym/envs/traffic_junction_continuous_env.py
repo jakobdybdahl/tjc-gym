@@ -546,10 +546,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
         if mode != "human":
             super(TrafficJunctionContinuousEnv, self).render(mode=mode)
 
-        try:
-            import tjc_gym.envs.rendering as rendering
-        except:
-            return
+        import tjc_gym.envs.rendering as rendering
 
         if self._viewer == None:
             self._viewer = rendering.Viewer(1000, 1000)
