@@ -87,10 +87,10 @@ class TrafficJunctionContinuousEnv(gym.Env):
     def __init__(
         self,
         n_max=4,
-        max_steps=1000,
+        max_steps=500,
         arrive_prob=0.05,
         r_fov=3,
-        step_cost=-0.1,
+        step_cost=-0.01,
         collision_cost=-100,
         movement_scale_factor=0.01,
         observability="global",
@@ -230,8 +230,10 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
     def _get_fov(self, agent):
         fov = np.full((self._fov_w, self._fov_h, 6), 0.0, dtype=np.float32)
+        others_in_vision = np.zeros(self.n_agents, dtype=int)
+
         if not agent.state.on_the_road:
-            return fov
+            return fov, others_in_vision
 
         ego_x, ego_y = self._r_fov, self._r_fov
 
@@ -332,9 +334,10 @@ class TrafficJunctionContinuousEnv(gym.Env):
                     direction = self.__get_direction_one_hot(a)
 
                     fov[i] = np.concatenate(([r], [theta], direction))
-                    break
 
-        return fov
+                    others_in_vision[a.index] = 1
+
+        return fov, others_in_vision
 
     def _get_global_positions(self, agent):
         obs = np.full((self.n_agents, 7), 0.0, dtype=np.float32)
@@ -368,11 +371,20 @@ class TrafficJunctionContinuousEnv(gym.Env):
         obs_dim = spaces.flatdim(self.observation_space[0])
         agent_obs = np.empty((self.n_agents, obs_dim), dtype=np.float32)
 
-        for i, agent in enumerate(self._agents):
-            if self.observability == "fov":
+        if self.observability == "fov":
+            agent_fovs = np.empty((self.n_agents, obs_dim), dtype=np.float32)
+            whos = np.empty((self.n_agents, self.n_agents))
+            for i, agent in enumerate(self._agents):
                 # flatten field of view
-                agent_obs[i] = self._get_fov(agent).flatten()
-            elif self.observability == "global":
+                fov, who = self._get_fov(agent)
+
+                agent_fovs[i] = fov.flatten()
+                whos[i] = who
+
+            return agent_fovs, whos
+
+        elif self.observability == "global":
+            for i, agent in enumerate(self._agents):
                 agent_obs[i] = self._get_global_positions(agent).flatten()
 
         return agent_obs
