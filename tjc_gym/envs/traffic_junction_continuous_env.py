@@ -78,6 +78,7 @@ class Agent(Entity):
 
     def done(self):
         self.state.done = True
+        # self.state.on_the_road = False
         self.state.position = (-1, -1)
 
 
@@ -284,13 +285,14 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
             # print(f"{i} -> ({x}, {y}) : ({x_next}, {y_next})")
 
+            # TODO make argument if grass should be detected
             # check if region is in the grass area
-            if self._is_region_on_road((x, y), (x_next, y_next), scale):
-                fov[i] = np.array([0, 0, 1, 1, 1, 1])
-                continue
+            # if self._is_region_on_road((x, y), (x_next, y_next), scale):
+            #     fov[i] = np.array([0, 0, 1, 1, 1, 1])
+            #     continue
 
             for a in self._agents:
-                if not a.state.on_the_road:
+                if not a.state.on_the_road or a.state.done:
                     continue
 
                 # default values are for "up" - no rotation
@@ -437,18 +439,24 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 if collision_flag:
                     collisions[agent_i] = 1
                     unique_collisions += 1
+                    agent.state.num_repeated_collisions += 1
+
                     # print(f"Collision! Reward: {self.collision_cost}")
                     rewards[agent_i] += self.collision_cost
 
-                    # remove agent from episode
-                    agent.done()
+                    # remove agent from episode if it has collided
+                    # agent.done()
 
                     # TODO give the other car a little punishment
                     # rewards[who] += -1
+
+                    agent.state.colliding = (True, who)
                 else:
                     agent.state.colliding = (False, None)
+                    agent.state.num_repeated_collisions = 0
 
                 rewards[agent_i] += self.step_cost * (1 - actions[agent_i]) * agent.state.step_count
+                # rewards[agent_i] += self.step_cost * agent.state.step_count
 
                 # check if agent has reached it's destination
                 if not agent.state.done and self._reached_destination(agent):
