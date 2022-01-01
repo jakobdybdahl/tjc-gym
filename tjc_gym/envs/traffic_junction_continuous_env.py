@@ -383,7 +383,6 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
             for i, agent in enumerate(self._agents):
                 # TODO move this flattening of obs space into a env wrapper
-                # flatten field of view
                 obs = self._get_fov(agent)
                 agent_fovs[i] = obs["fov"].flatten()
                 whos[i] = obs["who_in_fov"]
@@ -392,10 +391,11 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         elif self.observability == "global":
             obs_dim = spaces.flatdim(self.observation_space[0])
-            agent_obs = [np.empty((self.n_agents, obs_dim), dtype=np.float32)]
+            agent_obs = np.empty((self.n_agents, obs_dim), dtype=np.float32)
 
             for i, agent in enumerate(self._agents):
-                agent_obs[i] = self._get_global_positions(agent).flatten()
+                global_obs = self._get_global_positions(agent).flatten()
+                agent_obs[i] = global_obs
 
             return agent_obs
 
