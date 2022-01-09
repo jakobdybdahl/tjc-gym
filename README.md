@@ -31,7 +31,7 @@ score = 0
 obs = env.reset()
 while not all(done):
   env.render()
-  actions = [acsp.sample() for ascp in env.action_space]
+  actions = [acsp.sample() for acsp in env.action_space]
   obs_, rewards, done, info = env.step(actions)
   score += sum(rewards)
 
