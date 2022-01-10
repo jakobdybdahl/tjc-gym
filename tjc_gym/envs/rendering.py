@@ -28,8 +28,9 @@ class Viewer(pyglet.window.Window):
 
         # draw geoms
         self.transform.enable()
-        for geom in self.geoms:
-            geom.draw()
+        # for geom in self.geoms:
+        #     geom.draw()
+        self.batch.draw()
         self.transform.disable()
 
         # draw label - requires special scaling
@@ -82,15 +83,15 @@ class Viewer(pyglet.window.Window):
 
         return shape
 
-    def add_line(self, start, end, width=0.05, is_foreground=True):
+    def add_line(self, start, end, color=(192,192,192), width=0.05, is_foreground=True):
         shape = pyglet.shapes.Line(
-            *start, *end, width=width, batch=self.batch, group=self.foreground if is_foreground else self.background
+            *start, *end, width=width, batch=self.batch, color=color, group=self.foreground if is_foreground else self.background
         )
         self.geoms.append(shape)
 
         return shape
 
-    def add_label(self, text, x=0.5, y=0.5, size=18, anchor_x="center"):
+    def add_label(self, text, x=0.5, y=0.5, size=10, anchor_x="center"):
         label = pyglet.text.Label(
             text,
             font_name="Times New Roman",

@@ -1,5 +1,7 @@
 import copy
+import itertools
 import math
+import time
 
 import gym
 import numpy as np
@@ -11,6 +13,121 @@ GRASS_WIDTH = ENV_WIDTH * 0.425
 CAR_WIDTH = ENV_WIDTH * 0.0375
 CAR_LENGTH = 2 * CAR_WIDTH
 
+class Intersection(object):
+    def __init__(self, grid_pos, grid_shape, width, grass_width) -> None:
+        self.grid_row = grid_pos[0]
+        self.grid_col = grid_pos[1]
+        self.grid_shape = grid_shape
+
+        self.width = width
+        self.grass_width = grass_width
+        self.ll_x = self.grid_col * self.width
+        self.ll_y = self.grid_row * self.width
+
+        self.grass_areas = [
+            (self.ll_x, width - grass_width + self.ll_y),
+            (width - grass_width + self.ll_x, width - grass_width + self.ll_y),
+            (self.ll_x, self.ll_y),
+            (width - grass_width + self.ll_x, self.ll_y),
+        ]
+
+        self._init_gates()
+
+        self._init_road_dashes()
+    
+    def get_entry_gates(self):
+        return [(gate, position) for gate, position in self._entry_gates.items() if position != None]
+
+    def get_exit_gates(self):
+        return [(gate, position) for gate, position in self._exit_gates.items() if position != None]
+    
+    def is_region_in_intersection(self, ll, tr, scale):
+        def in_intersection(x, y):
+            if self.ll_x * scale <= x < (self.ll_x + self.width) * scale:
+                if self.ll_y * scale <= y <(self.ll_y + self.width) * scale:
+                    return True
+            return False
+        
+        return in_intersection(ll[0], ll[1]) and in_intersection(tr[0], tr[1])
+
+    def is_region_in_grass(self, ll, tr, scale):
+        if not self.is_region_in_intersection(ll, tr, scale):
+            return False
+
+        lx = self.ll_x * scale
+        ly = self.ll_y * scale
+        ew = self.width * scale
+        gw = self.grass_width * scale
+
+        def is_point_in_grass(x, y):
+            if x <= lx + gw:
+                if y <= ly + gw:  # lower left
+                    return True
+                elif y >= ly + ew - gw:  # top left
+                    return True
+            elif x >= lx + ew - gw:
+                if y <= ly + gw:  # lower right
+                    return True
+                elif y >= ly + ew - gw:  # top right
+                    return True
+            return False
+
+        return is_point_in_grass(ll[0], ll[1]) and is_point_in_grass(tr[0], tr[1])
+
+    def _init_gates(self):
+        self._entry_gates = self._empty_gate_dict()
+        self._exit_gates = self._empty_gate_dict()
+
+        if self.grid_row == 0:
+            self._entry_gates["bottom"] = (self.width - self.grass_width - CAR_WIDTH + self.ll_x, self.ll_y)
+            self._exit_gates["bottom"] = (self.grass_width + CAR_WIDTH + self.ll_x, self.ll_y)
+        if self.grid_row == self.grid_shape[0]-1:
+            self._entry_gates["top"] = (self.grass_width + CAR_WIDTH + self.ll_x, self.width + self.ll_y)
+            self._exit_gates["top"] = (self.width - self.grass_width - CAR_WIDTH + self.ll_x, self.width + self.ll_y)
+        
+        if self.grid_col == 0:
+            self._entry_gates["left"] = (self.ll_x, self.grass_width + CAR_WIDTH + self.ll_y)
+            self._exit_gates["left"] = (self.ll_x, self.width - self.grass_width - CAR_WIDTH + self.ll_y)
+        if self.grid_col == self.grid_shape[0]-1:
+            self._entry_gates["right"] = (self.width + self.ll_x, self.width - self.grass_width - CAR_WIDTH + self.ll_y)
+            self._exit_gates["right"] = (self.width + self.ll_x, self.grass_width + CAR_WIDTH + self.ll_y)
+
+    def _empty_gate_dict(self):
+        return {
+            "top": None,
+            "right": None,
+            "bottom": None,
+            "left": None
+        }
+    
+    def _init_road_dashes(self):
+        self.road_dashes = []
+
+        num_dashes = 10
+        dash_length = self.grass_width / (num_dashes * 2 - 1)
+
+        for i in range(num_dashes * 2 - 1):
+            if i % 2 == 1:
+                continue
+            # right
+            r_start = (self.width - self.grass_width + i * dash_length + self.ll_x, (self.width / 2) + self.ll_y)
+            r_end = (r_start[0] + dash_length, (self.width / 2) + self.ll_y)
+            self.road_dashes.append((r_start, r_end))
+
+            # left
+            l_start = (i * dash_length + self.ll_x, (self.width / 2) + self.ll_y)
+            l_end = (l_start[0] + dash_length, (self.width / 2) + self.ll_y)
+            self.road_dashes.append((l_start, l_end))
+
+            # up
+            u_start = ((self.width / 2) + self.ll_x, self.ll_y + self.width - self.grass_width + i * dash_length)
+            u_end = ((self.width / 2) + self.ll_x, u_start[1] + dash_length)
+            self.road_dashes.append((u_start, u_end))
+
+            # down
+            d_start = ((self.width / 2) + self.ll_x, self.ll_y + self.grass_width - i * dash_length)
+            d_end = ((self.width / 2) + self.ll_x, d_start[1] - dash_length)
+            self.road_dashes.append((d_start, d_end))
 
 class Point(object):
     def __init__(self, xcoord=0, ycoord=0) -> None:
@@ -32,7 +149,7 @@ class AgentState(EntityState):
         self.on_the_road = False
         self.done = False
         self.colliding = (False, None)  # (colliding, whom). Wether the agent was colliding in last step and with whom
-
+        self.destination = None
 
 class Entity(object):
     def __init__(self) -> None:
@@ -97,6 +214,7 @@ class TrafficJunctionContinuousEnv(gym.Env):
         reward_callback=lambda rewards, _: rewards,
         grass_detection=True,
         remove_car_on_collision=False,
+        n_intersections=1,
     ) -> None:
         self.seed()
 
@@ -119,41 +237,19 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
         self._agents = self.n_agents * [None]
         self._n_routes = 1  # only possible to move forward (no turning)
+        self._n_intersections = n_intersections
 
-        self._entry_gates = {
-            "top": (GRASS_WIDTH + CAR_WIDTH, ENV_WIDTH),
-            "right": (ENV_WIDTH, ENV_WIDTH - GRASS_WIDTH - CAR_WIDTH),
-            "bottom": (ENV_WIDTH - GRASS_WIDTH - CAR_WIDTH, 0),
-            "left": (0, GRASS_WIDTH + CAR_WIDTH),
-        }
+        self.intersection_grid_shape = (math.isqrt(self._n_intersections), math.isqrt(self._n_intersections))
+        self._intersections = [Intersection(grid_pos, self.intersection_grid_shape, ENV_WIDTH, GRASS_WIDTH) for grid_pos in np.ndindex(self.intersection_grid_shape)]
+
+        self._entry_gates = list(itertools.chain.from_iterable([inter.get_entry_gates() for inter in self._intersections]))
+        self._exit_gates = list(itertools.chain.from_iterable([inter.get_exit_gates() for inter in self._intersections]))
 
         self._directions = {"down": (0, -1), "left": (-1, 0), "up": (0, 1), "right": (1, 0)}
         self._n_directions = len(self._directions)
 
-        # destinations: { direction : destination coordinates }
-        self._destinations = {}
-        dest_positions = [
-            (GRASS_WIDTH + CAR_WIDTH, 0),  # bottom
-            (0, GRASS_WIDTH + CAR_WIDTH),  # left
-            (ENV_WIDTH - GRASS_WIDTH - CAR_WIDTH, ENV_WIDTH),  # top
-            (ENV_WIDTH, GRASS_WIDTH + CAR_WIDTH),  # right
-        ]
-        for i, direction in enumerate(self._directions.values()):
-            self._destinations[direction] = dest_positions[i]
-
-        # dict: { starting_place: direction_vector }
-        self._route_vectors = {
-            self._entry_gates["top"]: self._directions["down"],  # at top moving down
-            self._entry_gates["right"]: self._directions["left"],  # at right moving left
-            self._entry_gates["bottom"]: self._directions["up"],  # at bottom moving up
-            self._entry_gates["left"]: self._directions["right"],  # at left moving right
-        }
-
         # action and observation space
-        self.action_space = []
-        for i in range(self.n_agents):
-            self.action_space.append(spaces.Box(low=0, high=1, shape=(1,)))
-
+        self.action_space = [spaces.Box(low=0, high=1, shape=(1,))] * self.n_agents
         self._init_obs_space()
 
         # env info
@@ -167,6 +263,8 @@ class TrafficJunctionContinuousEnv(gym.Env):
 
     def reset(self):
         self._agents = self.n_agents * [None]
+
+        self.np_random.shuffle(self._entry_gates)
 
         # env info
         self._step_count = 0
@@ -190,23 +288,9 @@ class TrafficJunctionContinuousEnv(gym.Env):
         self._fov_h = 2 * self._r_fov + 1
 
     def _is_region_in_grass(self, ll, tr, scale):
-        grass_width = GRASS_WIDTH * scale
-        env_width = ENV_WIDTH * scale
-
-        def is_point_in_grass(x, y):
-            if x <= grass_width:
-                if y <= grass_width:  # lower left
-                    return True
-                elif y >= env_width - grass_width:  # top left
-                    return True
-            elif x >= env_width - grass_width:
-                if y <= grass_width:  # lower right
-                    return True
-                elif y >= env_width - grass_width:  # top right
-                    return True
-            return False
-
-        return is_point_in_grass(ll[0], ll[1]) and is_point_in_grass(tr[0], tr[1])
+        for inter in self._intersections:
+            if inter.is_region_in_grass(ll, tr, scale):
+                return True
 
     def _init_obs_space(self):
         self.observation_space = []
@@ -400,35 +484,42 @@ class TrafficJunctionContinuousEnv(gym.Env):
             return agent_obs
 
     def _free_gates(self):
-        free_gates = {}
+        free_gates = []
 
-        agent_positions = [agent.state.position for agent in self._agents if agent.state.on_the_road]
+        agent_positions = [agent.state.position for agent in self._agents if agent.state.on_the_road and not agent.state.done]
 
         for gate in self._entry_gates:
-            free_gates[gate] = (True, self._entry_gates[gate])  # (free; pos)
-            gate_pos = self._entry_gates[gate]
-            if gate == "top":
+            gate_name = gate[0]
+            gate_pos = gate[1]
+            free = True
+            if gate_name == "top":
                 for pos in agent_positions:
-                    if pos[1] > gate_pos[1] - 2 * CAR_LENGTH:
-                        free_gates[gate] = (False, None)
-                        break
-            elif gate == "left":
+                    if pos[0] == gate_pos[0]:
+                        if pos[1] > gate_pos[1] - 2 * CAR_LENGTH:
+                            free = False
+                            break
+            elif gate_name == "left":
                 for pos in agent_positions:
-                    if pos[0] < gate_pos[0] + 2 * CAR_LENGTH:
-                        free_gates[gate] = (False, None)
-                        break
-            elif gate == "bottom":
+                    if pos[1] == gate_pos[1]:
+                        if pos[0] < gate_pos[0] + 2 * CAR_LENGTH:
+                            free = False
+                            break
+            elif gate_name == "bottom":
                 for pos in agent_positions:
-                    if pos[1] < gate_pos[1] + 2 * CAR_LENGTH:
-                        free_gates[gate] = (False, None)
-                        break
-            elif gate == "right":
+                    if pos[0] == gate_pos[0]:
+                        if pos[1] < gate_pos[1] + 2 * CAR_LENGTH:
+                            free = False
+                            break
+            elif gate_name == "right":
                 for pos in agent_positions:
-                    if pos[0] > gate_pos[0] - 2 * CAR_LENGTH:
-                        free_gates[gate] = (False, None)
-                        break
+                    if pos[1] == gate_pos[1]:
+                        if pos[0] > gate_pos[0] - 2 * CAR_LENGTH:
+                            free = False
+                            break
+            if free:
+                free_gates.append(gate)
 
-        return [gate[1] for gate in free_gates.values() if gate[0] == True]
+        return free_gates
 
     def step(self, actions):
         self._step_count += 1  # global env step
@@ -486,10 +577,13 @@ class TrafficJunctionContinuousEnv(gym.Env):
             if len(agents_off_road) > 0 and len(free_gates) > 0:
                 agent_to_enter = self.np_random.choice(agents_off_road)
                 free_gate_indx = self.np_random.choice(len(free_gates))
-                pos = tuple(free_gates[free_gate_indx])
+                entry_gate = free_gates[free_gate_indx]
+                direction = self._entry_gate_to_direction(entry_gate)
+                exit_gate = self._get_exit_gate(entry_gate, direction)
 
-                agent_to_enter.state.position = pos
-                agent_to_enter.state.direction = self._route_vectors[pos]
+                agent_to_enter.state.position = entry_gate[1]
+                agent_to_enter.state.destination = exit_gate[1]
+                agent_to_enter.state.direction = direction
                 agent_to_enter.state.on_the_road = True
                 agent_to_enter.state.route = self.np_random.randint(1, self._n_routes + 1)  # [1,n_routes] (inclusive)
                 self.curr_cars_count += 1
@@ -512,6 +606,37 @@ class TrafficJunctionContinuousEnv(gym.Env):
                 "took_step": took_step,
             },
         )
+
+    def _get_exit_gate(self, entry_gate, direction):
+        exit_gate_name = self._entry_gate_to_exit_gate(entry_gate)
+
+        def match(exit_gate):
+            if direction == self._directions["up"] or direction == self._directions["down"]:
+                return exit_gate[0] == exit_gate_name and exit_gate[1][0] == entry_gate[1][0]
+            else:
+                return exit_gate[0] == exit_gate_name and exit_gate[1][1] == entry_gate[1][1]
+
+        first_or_default = next((x for x in self._exit_gates if match(x)), None)
+
+        return first_or_default
+
+    def _entry_gate_to_exit_gate(self, entry_gate):
+        m = {
+            "top": "bottom",
+            "bottom": "top",
+            "left": "right",
+            "right": "left"
+        }
+        return m[entry_gate[0]]
+
+    def _entry_gate_to_direction(self, entry_gate):
+        m = {
+            "top": self._directions["down"],
+            "bottom": self._directions["up"],
+            "left": self._directions["right"],
+            "right": self._directions["left"]
+        }
+        return m[entry_gate[0]]
 
     def _check_collision(self, agent, next_pos):
         agent_copy = copy.deepcopy(agent)
@@ -544,26 +669,19 @@ class TrafficJunctionContinuousEnv(gym.Env):
         return False, None
 
     def _reached_destination(self, agent):
-        def has_reached_dest():
-            if agent.state.direction == self._directions["down"]:
-                return pos[1] < dest[1]
-            elif agent.state.direction == self._directions["up"]:
-                return pos[1] > dest[1]
-            elif agent.state.direction == self._directions["left"]:
-                return pos[0] < dest[0]
-            elif agent.state.direction == self._directions["right"]:
-                return pos[0] > dest[0]
-
         pos = agent.state.position
-        dest = self._destinations[agent.state.direction]
-        reached_dest = has_reached_dest()
+        dest = agent.state.destination
 
-        return reached_dest
+        if agent.state.direction == self._directions["down"]:
+            return pos[1] < dest[1]
+        elif agent.state.direction == self._directions["up"]:
+            return pos[1] > dest[1]
+        elif agent.state.direction == self._directions["left"]:
+            return pos[0] < dest[0]
+        elif agent.state.direction == self._directions["right"]:
+            return pos[0] > dest[0]
 
     def _reset_environment(self):
-        shuffled_gates = list(self._route_vectors.keys())
-        self.np_random.shuffle(shuffled_gates)
-
         self._agents = [Agent(i) for i in range(self.n_agents)]
         for agent in self._agents:
             agent.state.position = (-1, -1)  # not yet on road
@@ -575,17 +693,18 @@ class TrafficJunctionContinuousEnv(gym.Env):
         import tjc_gym.envs.rendering as rendering
 
         if self._viewer == None:
+            env_total_width = ENV_WIDTH * self.intersection_grid_shape[0]
             self._viewer = rendering.Viewer(1000, 1000)
-            self._viewer.set_bounds(0, ENV_WIDTH, 0, ENV_WIDTH)
+            self._viewer.set_bounds(0, env_total_width, 0, env_total_width)
 
         if self._agent_geoms == None:
             self._initialize_env_geoms()
 
         # update info box
-        self._reward_label.text = "{:.2f}".format(self._total_reward)
-        self._avg_speed_label.text = "{:.2f}".format(self._avg_speed)
-        self._collisions_label.text = str(self._acc_unique_collisions)
-        self._steps_label.text = str(self._step_count)
+        # self._reward_label.text = "{:.2f}".format(self._total_reward)
+        # self._avg_speed_label.text = "{:.2f}".format(self._avg_speed)
+        # self._collisions_label.text = str(self._acc_unique_collisions)
+        # self._steps_label.text = str(self._step_count)
 
         for i, agent in enumerate(self._agents):
             if not agent.state.done and agent.state.on_the_road:
@@ -666,67 +785,87 @@ class TrafficJunctionContinuousEnv(gym.Env):
             self._agent_labels.append(label)
 
         # grass
-        grass_recs = [self._viewer.add_rectangle(GRASS_WIDTH, GRASS_WIDTH, is_foreground=False) for _ in range(4)]
-        for rec in grass_recs:
-            rec.color = (126, 200, 80)
-        grass_recs[0].position = (0, ENV_WIDTH - GRASS_WIDTH)
-        grass_recs[1].position = (ENV_WIDTH - GRASS_WIDTH, ENV_WIDTH - GRASS_WIDTH)
-        grass_recs[2].position = (0, 0)
-        grass_recs[3].position = (ENV_WIDTH - GRASS_WIDTH, 0)
+        for inter in self._intersections:
+            for grass_ll in inter.grass_areas:
+                grass_rect = self._viewer.add_rectangle(inter.grass_width, inter.grass_width, is_foreground=False)
+                grass_rect.color = (126, 200, 80)
+                grass_rect.position = grass_ll
 
-        # road dashes
-        num_road_dashes = 10
-        dash_length = GRASS_WIDTH / (num_road_dashes * 2 - 1)
+        dashes = list(itertools.chain.from_iterable([inter.road_dashes for inter in self._intersections]))
+        for dash in dashes:
+            self._viewer.add_line(dash[0], dash[1], width=0.0025, is_foreground=False)
+
 
         # info box
-        x_left = 0.68 * ENV_WIDTH
-        self._viewer.add_label("Episode stats", x_left, 0.94 * ENV_WIDTH, size=24, anchor_x="left")
+        # x_left = 0.68 * ENV_WIDTH
+        # self._viewer.add_label("Episode stats", x_left, 0.94 * ENV_WIDTH, size=24, anchor_x="left")
 
-        y_base = 0.88 * ENV_WIDTH
-        y_inc = -0.05 * ENV_WIDTH
-        x_left_indent = x_left + ENV_WIDTH * 0.18
+        # y_base = 0.88 * ENV_WIDTH
+        # y_inc = -0.05 * ENV_WIDTH
+        # x_left_indent = x_left + ENV_WIDTH * 0.18
 
-        self._viewer.add_label("Steps", x_left, y_base, anchor_x="left")
-        self._steps_label = self._viewer.add_label(str(self._step_count), x_left_indent, y_base, anchor_x="left")
+        # self._viewer.add_label("Steps", x_left, y_base, anchor_x="left")
+        # self._steps_label = self._viewer.add_label(str(self._step_count), x_left_indent, y_base, anchor_x="left")
 
-        self._viewer.add_label("Reward", x_left, y_base + y_inc, anchor_x="left")
-        self._reward_label = self._viewer.add_label(
-            str(self._total_reward), x_left_indent, y_base + y_inc, anchor_x="left"
-        )
+        # self._viewer.add_label("Reward", x_left, y_base + y_inc, anchor_x="left")
+        # self._reward_label = self._viewer.add_label(
+        #     str(self._total_reward), x_left_indent, y_base + y_inc, anchor_x="left"
+        # )
 
-        self._viewer.add_label("Avg. speed", x_left, y_base + 2 * y_inc, anchor_x="left")
-        self._avg_speed_label = self._viewer.add_label(
-            str(self._avg_speed), x_left_indent, y_base + 2 * y_inc, anchor_x="left"
-        )
+        # self._viewer.add_label("Avg. speed", x_left, y_base + 2 * y_inc, anchor_x="left")
+        # self._avg_speed_label = self._viewer.add_label(
+        #     str(self._avg_speed), x_left_indent, y_base + 2 * y_inc, anchor_x="left"
+        # )
 
-        self._viewer.add_label("Collisions", x_left, y_base + 3 * y_inc, anchor_x="left")
-        self._collisions_label = self._viewer.add_label(
-            str(self._acc_unique_collisions), x_left_indent, y_base + 3 * y_inc, anchor_x="left"
-        )
+        # self._viewer.add_label("Collisions", x_left, y_base + 3 * y_inc, anchor_x="left")
+        # self._collisions_label = self._viewer.add_label(
+        #     str(self._acc_unique_collisions), x_left_indent, y_base + 3 * y_inc, anchor_x="left"
+        # )
 
-        def add_dash(start, end):
-            line = self._viewer.add_line(start, end, width=0.0025, is_foreground=False)
-            line.color = (192, 192, 192)
+def is_square(i):
+    return i == math.isqrt(i) ** 2
 
-        for i in range(num_road_dashes * 2 - 1):
-            if i % 2 == 1:
-                continue
-            # right
-            start = (ENV_WIDTH - GRASS_WIDTH + i * dash_length, ENV_WIDTH / 2)
-            end = (start[0] + dash_length, ENV_WIDTH / 2)
-            add_dash(start, end)
+def render_env():
+    env = TrafficJunctionContinuousEnv(n_max=50, n_intersections=4, max_steps=2000)
+    done = [False] * env.n_agents
+    score = 0
 
-            # left
-            start = (0 + i * dash_length, ENV_WIDTH / 2)
-            end = (start[0] + dash_length, ENV_WIDTH / 2)
-            add_dash(start, end)
+    obs = env.reset()
 
-            # up
-            start = (ENV_WIDTH / 2, ENV_WIDTH - GRASS_WIDTH + i * dash_length)
-            end = (ENV_WIDTH / 2, start[1] + dash_length)
-            add_dash(start, end)
+    rtimes = []
+    stimes = []
 
-            # down
-            start = (ENV_WIDTH / 2, GRASS_WIDTH - i * dash_length)
-            end = (ENV_WIDTH / 2, start[1] - dash_length)
-            add_dash(start, end)
+    while not all(done):
+        rstart = time.time()
+        env.render()
+        rend = time.time()
+        rtimes.append(rend - rstart)
+
+        actions = [acsp.sample() for acsp in env.action_space]
+
+        sstart = time.time()
+        obs_, rewards, done, info = env.step(actions)
+        send = time.time()
+        stimes.append(send - sstart)
+
+        score += sum(rewards)
+    
+    print(np.mean(rtimes))
+    print(np.mean(stimes))
+
+def test_intersection():
+    n_inter = 4
+    assert is_square(n_inter)
+
+    shape = (math.isqrt(n_inter), math.isqrt(n_inter))
+
+    inters = [Intersection(pos, shape, ENV_WIDTH, GRASS_WIDTH) for pos in np.ndindex(shape)]
+
+    entry_gates = list(itertools.chain.from_iterable([inter.get_entry_gates() for inter in inters]))
+    exit_gates = list(itertools.chain.from_iterable([inter.get_exit_gates() for inter in inters]))
+
+    print("Hello")
+
+if __name__ == "__main__":
+
+    render_env()
